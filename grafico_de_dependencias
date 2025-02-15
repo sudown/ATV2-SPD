@@ -1,0 +1,17 @@
+graph TD;
+    A[MPI_Init] --> B[Rank 0: Carrega gabarito e candidatos]
+    B -->|Broadcast| C[MPI_Bcast: Distribui total de candidatos e gabarito]
+    C --> D[Rank 0: Calcula dificuldades e pontuações]
+    D -->|Broadcast| E[MPI_Bcast: Envia dificuldades e pontuações]
+
+    E -->|Scatter| F[MPI_Scatter: Divide candidatos entre ranks]
+    F --> G[Todos os ranks: Calculam notas individualmente]  
+    G -->|Gather| H[MPI_Gather: Envia resultados ao Rank 0]
+
+    H --> I[Rank 0: Ordena resultados]
+    I --> J[Rank 0: Salva resultados]
+    J --> K[MPI_Finalize]
+
+    subgraph Paralelismo
+        F -->|Cada rank processa sua parte| G
+    end

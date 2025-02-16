@@ -1,17 +1,28 @@
-graph TD;
-    A[MPI_Init] --> B[Rank 0: Carrega gabarito e candidatos]
-    B -->|Broadcast| C[MPI_Bcast: Distribui total de candidatos e gabarito]
-    C --> D[Rank 0: Calcula dificuldades e pontuações]
-    D -->|Broadcast| E[MPI_Bcast: Envia dificuldades e pontuações]
-
-    E -->|Scatter| F[MPI_Scatter: Divide candidatos entre ranks]
-    F --> G[Todos os ranks: Calculam notas individualmente]  
-    G -->|Gather| H[MPI_Gather: Envia resultados ao Rank 0]
-
-    H --> I[Rank 0: Ordena resultados]
-    I --> J[Rank 0: Salva resultados]
-    J --> K[MPI_Finalize]
-
-    subgraph Paralelismo
-        F -->|Cada rank processa sua parte| G
-    end
+---
+config:
+  layout: fixed
+---
+flowchart TD
+ subgraph subGraph0["Paralelismo - Cálculo de Notas"]
+        H1["Calcular Nota - P1"]
+        G1["Processo 1 - Recebe Candidatos"]
+        H2["Calcular Nota - P2"]
+        G2["Processo 2 - Recebe Candidatos"]
+        HN["Calcular Nota - PN"]
+        G3["Processo N - Recebe Candidatos"]
+  end
+    A("Iniciar MPI") --> B("Ler Gabarito - Rank 0")
+    B --> C("Ler Respostas - Rank 0")
+    C --> D("Broadcast Total de Candidatos")
+    D --> E("Broadcast Gabarito")
+    E --> F("Broadcast GD e Scores")
+    F -- Scatter --> G1 & G2 & G3
+    G1 --> H1
+    G2 --> H2
+    G3 --> HN
+    H1 -- Gather --> I("Coletar Resultados - Rank 0")
+    H2 -- Gather --> I
+    HN -- Gather --> I
+    I --> J("Ordenar Resultados - Rank 0")
+    J --> K("Salvar Resultados - Rank 0")
+    K --> L("Finalizar MPI")

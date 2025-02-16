@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #define MAX_CANDIDATES 10000
 #define MAX_QUESTIONS 30
@@ -15,7 +16,10 @@ typedef struct {
 
 typedef struct {
     int registration;
-    double score;
+    double total_score;
+    double language;
+    double math;
+    double specific;
 } Result;
 
 void load_answer_key(char *answer_key, const char *file_path) {
@@ -61,7 +65,7 @@ void calculate_difficulties(Candidate *candidates, int total, char *answer_key, 
             }
         }
     }
-    int max_correct = 0;
+    int max_correct = 1;
     for (int j = 0; j < MAX_QUESTIONS; j++) {
         if (correct_answers[j] > max_correct) {
             max_correct = correct_answers[j];
@@ -78,24 +82,34 @@ void calculate_scores(double *gd, double *scores) {
         sum_gd[j / 10] += gd[j];
     }
     for (int j = 0; j < MAX_QUESTIONS; j++) {
-        scores[j] = (gd[j] / sum_gd[j / 10]) * 100;
+        scores[j] = (sum_gd[j / 10] > 0) ? (gd[j] / sum_gd[j / 10]) * 100 : 0.0;
     }
 }
 
-double calculate_score(char *answers, char *answer_key, double *scores) {
-    double score = 0.0;
+double calculate_score(char *answers, char *answer_key, double *scores, double *language, double *math, double *specific) {
+    double total = 0.0;
+    *language = 0.0;
+    *math = 0.0;
+    *specific = 0.0;
     for (int i = 0; i < MAX_QUESTIONS; i++) {
         if (answers[i] == answer_key[i]) {
-            score += scores[i];
+            total += scores[i];
+            if (i < 10) {
+                *language += scores[i];
+            } else if (i < 20) {
+                *math += scores[i];
+            } else {
+                *specific += scores[i];
+            }
         }
     }
-    return score;
+    return total;
 }
 
 void sort_results(Result *results, int total) {
     for (int i = 0; i < total - 1; i++) {
         for (int j = i + 1; j < total; j++) {
-            if (results[i].score < results[j].score) {
+            if (results[i].total_score < results[j].total_score) {
                 Result temp = results[i];
                 results[i] = results[j];
                 results[j] = temp;
@@ -110,9 +124,9 @@ void save_results(const char *file_path, Result *results, int total, int test_co
         printf("Error creating file %s\n", file_path);
         return;
     }
-    fprintf(file, "Position,Code,Registration,Score\n");
+    fprintf(file, "Position,Code,Registration,Total Score,Language,Math,Specific\n");
     for (int i = 0; i < total; i++) {
-        fprintf(file, "%d,%d,%d,%.1f\n", i + 1, test_code, results[i].registration, results[i].score);
+        fprintf(file, "%d,%d,%d,%.1f,%.1f,%.1f,%.1f\n", i + 1, test_code, results[i].registration, results[i].total_score, results[i].language, results[i].math, results[i].specific);
     }
     fclose(file);
 }
@@ -146,7 +160,6 @@ int main(int argc, char *argv[]) {
         calculate_difficulties(candidates, total_candidates, answer_key, gd);
         calculate_scores(gd, scores);
     }
-    MPI_Bcast(gd, MAX_QUESTIONS, MPI_DOUBLE, 0, MPI_COMM_WORLD);
     MPI_Bcast(scores, MAX_QUESTIONS, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
     int local_count = total_candidates / size + (rank < total_candidates % size);
@@ -158,26 +171,16 @@ int main(int argc, char *argv[]) {
     Result *local_results = malloc(local_count * sizeof(Result));
     for (int i = 0; i < local_count; i++) {
         local_results[i].registration = my_candidates[i].registration;
-        local_results[i].score = calculate_score(my_candidates[i].answers, answer_key, scores);
+        local_results[i].total_score = calculate_score(my_candidates[i].answers, answer_key, scores, &local_results[i].language, &local_results[i].math, &local_results[i].specific);
     }
 
-    Result *final_results = NULL;
-    if (rank == 0) {
-        final_results = malloc(total_candidates * sizeof(Result));
-    }
-
-    MPI_Gather(local_results, local_count * sizeof(Result), MPI_BYTE,
-               final_results, local_count * sizeof(Result), MPI_BYTE,
-               0, MPI_COMM_WORLD);
+    MPI_Gather(local_results, local_count * sizeof(Result), MPI_BYTE, candidates, local_count * sizeof(Result), MPI_BYTE, 0, MPI_COMM_WORLD);
 
     if (rank == 0) {
-        sort_results(final_results, total_candidates);
-        save_results("./RESULT/resultado.csv", final_results, total_candidates, test_code);
-        free(final_results);
+        sort_results(candidates, total_candidates);
+        save_results("./RESULT/resultado.csv", candidates, total_candidates, test_code);
     }
 
-    free(my_candidates);
-    free(local_results);
     MPI_Finalize();
     return 0;
 }
